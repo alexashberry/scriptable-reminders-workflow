@@ -1,0 +1,13 @@
+{
+  "name": "scriptable-reminders-workflow",
+  "version": "0.0.1",
+  "description": "A script for iOS Scriptable app.",
+  "main": "reminders.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node copy-to-icloud.js"
+  },
+  "devDependencies": {
+    "chokidar": "^3.5.3"
+  }
+}
