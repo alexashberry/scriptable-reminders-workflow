@@ -1,20 +1,20 @@
 const settings = {
     generalReminderList: "Общий",
     checkLists: {
-        "Заказать в аптеке": {
+        "Аптека": {
             limitCount: 3,
-            limitDate: 7,
+            limitDateDiff: 7,
         },
-        "Заказать в озоне": {
+        "Озон (срочное)": {
             limitCount: 5,
-            limitDate: 10,
+            limitDateDiff: 7,
         },
     },
 }
 const generalReminderList = await Calendar.forRemindersByTitle(settings.generalReminderList);
 
 
-async function processReminderList(reminderListName, limitCount, limitDate) {
+async function processReminderList(reminderListName, limitCount, limitDateDiff) {
     const reminderList = await Calendar.forRemindersByTitle(reminderListName);
     const reminders = await Reminder.allIncomplete([reminderList]);
     const count = reminders.length;
@@ -27,12 +27,12 @@ async function processReminderList(reminderListName, limitCount, limitDate) {
     }
 
     const currentDate = new Date();
-    const limitData = new Date();
-    limitData.setDate(currentDate.getDate() - limitDate);
-    console.log(`Found ${count} reminders in the list (limit ${limitCount})`);
-    console.log(`Oldest reminder is at ${oldestDate} (limit ${limitDate})`);
+    const limitDate = new Date();
+    limitDate.setDate(currentDate.getDate() - limitDateDiff);
+    log(`Found ${count} reminders in the list (limit ${limitCount})`);
+    log(`Oldest reminder is at ${oldestDate} (limit ${limitDate})`);
 
-    if (count >= limitCount || oldestDate < limitData) {
+    if (count >= limitCount || oldestDate < limitDate) {
         let foundReminder = null;
         const allGeneralReminders = await Reminder.allIncomplete([generalReminderList]);
         for (const reminder of allGeneralReminders) {
@@ -43,7 +43,7 @@ async function processReminderList(reminderListName, limitCount, limitDate) {
         }
         var dueDate = new Date();
         if (foundReminder) {
-            console.log(`Found existing reminder, deleting`);
+            log(`Found existing reminder, deleting`);
             dueDate = foundReminder.dueDate;
             foundReminder.remove();
         }
@@ -54,16 +54,16 @@ async function processReminderList(reminderListName, limitCount, limitDate) {
         newReminder.dueDate = dueDate;
         newReminder.dueDateIncludesTime = false;
         newReminder.save();
-        console.log(`Added reminder ${reminderListName}`);
+        log(`Added reminder ${reminderListName}`);
     } else {
-        console.log(`No limit reached, skipping`);
+        log(`No limit reached, skipping`);
     }
 }
 
 for (let listName in settings.checkLists) {
     let listOptions = settings.checkLists[listName];
-    console.log(`Processing reminders from list '${listName}'`);
-    await processReminderList(listName, listOptions.limitCount, listOptions.limitDate);
+    log(`Processing reminders from list '${listName}'`);
+    await processReminderList(listName, listOptions.limitCount, listOptions.limitDateDiff);
 }
-console.log("Completed")
+log("Completed")
 Script.complete();
