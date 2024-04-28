@@ -1,17 +1,25 @@
+const numWords = importModule('num-words');
+
+
 const settings = {
-    generalReminderList: "Общий",
+    generalReminderList: 'Общий',
     checkLists: {
-        "Аптека": {
+        'Аптека': {
             limitCount: 3,
             limitDateDiff: 7,
         },
-        "Озон (срочное)": {
+        'Озон (срочное)': {
             limitCount: 5,
             limitDateDiff: 7,
         },
     },
 }
 const generalReminderList = await Calendar.forRemindersByTitle(settings.generalReminderList);
+
+
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
 
 
 async function processReminderList(reminderListName, limitCount, limitDateDiff) {
@@ -60,10 +68,59 @@ async function processReminderList(reminderListName, limitCount, limitDateDiff) 
     }
 }
 
+
+async function getTodayTasks() {
+    const allIncomplete = await Reminder.allIncomplete();
+    const currentDate = new Date();
+
+    // Sort reminders by priority (descending order)
+    allIncomplete.sort((a, b) => {
+        const priorityA = a.priority === 0 ? 1000 : a.priority;
+        const priorityB = b.priority === 0 ? 1000 : b.priority;
+        return priorityA - priorityB;
+    });
+
+    var todayReminders = [];
+    for (const reminder of allIncomplete) {
+        if (reminder.dueDate != null && reminder.dueDate <= currentDate) {
+            const prioritySymbol = (reminder.priority != 0) ? "! " : "";
+            const bulletSymbol = '\u2023';
+            todayReminders.push(`${bulletSymbol} ${prioritySymbol}${reminder.title}`);
+        }
+    }
+
+    return {
+        todayTasks: todayReminders.join('\n'),
+        n: todayReminders.length,
+    }
+}
+
+
+async function remindersNotify() {
+    const {todayTasks, n} = await getTodayTasks();
+    if (n === 0) return;
+    const numberOfNotificationsText = capitalizeFirstLetter(numWords(n));
+
+    const notification = new Notification();
+    if (n === 1) {
+        notification.title = `${numberOfNotificationsText} urgent task for today`
+    } else {
+        notification.title = `${numberOfNotificationsText} urgent tasks for today`
+    }
+    notification.body = todayTasks;
+    notification.sound = 'popup';
+    notification.openURL = 'x-apple-reminderkit://';
+    notification.schedule();
+}
+
+
 for (let listName in settings.checkLists) {
     let listOptions = settings.checkLists[listName];
     log(`Processing reminders from list '${listName}'`);
     await processReminderList(listName, listOptions.limitCount, listOptions.limitDateDiff);
 }
-log("Completed")
+
+await remindersNotify();
+
+log('Completed');
 Script.complete();
