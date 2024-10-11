@@ -1,73 +1,126 @@
-const numWords = importModule('num-words');
+// Import necessary modules
+const numWords = importModule('num-words'); // Adjust based on your environment if necessary
 
-const REMINDER_URL = 'x-apple-reminderkit://'; // URL for reminders
+// Constants
+const REMINDER_URL = 'x-apple-reminderkit://'; // URL scheme for Apple Reminders
 
-// Function to capitalize the first letter of a string
+/**
+ * Capitalizes the first letter of a string
+ * @param {string} string - The string to capitalize
+ * @returns {string} - String with the first letter capitalized
+ */
 function capitalizeFirstLetter(string) {
+    if (!string || typeof string !== 'string') {
+        console.warn('capitalizeFirstLetter received invalid input.');
+        return '';
+    }
     return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
-// Function to handle reminders notification
-async function remindersNotify(todayTasks, n) {
-    // If no urgent tasks for today, skip notification
-    if (n === 0) {
-        log('No urgent tasks for today. Skipping notification.');
-        return;
-    }
-
-    // Determine notification title based on the number of tasks
-    const numberOfNotificationsText = capitalizeFirstLetter(numWords(n));
-    const notificationTitle = (n === 1) ? `${numberOfNotificationsText} urgent task for today` : `${numberOfNotificationsText} urgent tasks for today`;
-
-    // Create and schedule notification
-    const notification = new Notification();
-    notification.title = notificationTitle;
-    notification.body = todayTasks;
-
-    // Determine the sound based on the current time
-    const currentTime = new Date().getHours();
-    notification.sound = currentTime < 17 ? 'event' : 'failure';
-
-    notification.openURL = REMINDER_URL;
-    notification.schedule();
-    log(`Notification scheduled for ${n} urgent tasks.`);
-}
-
-// Function to fetch urgent tasks for today
-async function getTodayTasks() {
-    // Fetch all incomplete reminders
-    const allIncomplete = await Reminder.allIncomplete();
-    const currentDate = new Date();
-
-    // Sort reminders by priority (descending order)
-    allIncomplete.sort((a, b) => {
-        const priorityA = a.priority === 0 ? 1000 : a.priority;
-        const priorityB = b.priority === 0 ? 1000 : b.priority;
-        return priorityA - priorityB;
-    });
-
-    // Filter reminders due for today or overdue
-    const todayReminders = [];
-    for (const reminder of allIncomplete) {
-        if (reminder.dueDate != null && reminder.dueDate <= currentDate) {
-            const prioritySymbol = (reminder.priority != 0) ? "! " : "";
-            const bulletSymbol = '\u2023';
-            todayReminders.push(`${bulletSymbol} ${prioritySymbol}${reminder.title}`);
+/**
+ * Handles the notification for reminders
+ * @param {string} todayUrgentTasks - List of today's urgent tasks as a string
+ * @param {number} n - Number of urgent tasks
+ * @param {number} inboxCount - Number of inbox items
+ */
+async function remindersNotify(todayUrgentTasks, n, inboxCount) {
+    try {
+        // If there are no urgent tasks or inbox items, skip the notification
+        if (n === 0 && inboxCount === 0) {
+            console.log('No urgent tasks for today and inbox is empty. Skipping notification.');
+            return;
         }
-    }
 
-    // Return today's urgent tasks and their count
-    return {
-        todayTasks: todayReminders.join('\n'),
-        n: todayReminders.length,
-    };
+        let notificationTitle = '';
+        let body = '';
+
+        // Construct the notification title and body based on tasks and inbox items
+        if (n !== 0) {
+            const numberOfNotificationsText = capitalizeFirstLetter(numWords(n));
+            notificationTitle = (n === 1) ? `${numberOfNotificationsText} urgent task` : `${numberOfNotificationsText} urgent tasks`;
+            body = todayUrgentTasks;
+
+            if (inboxCount !== 0) {
+                const numberOfInboxText = numWords(inboxCount);
+                notificationTitle += ` + ${numberOfInboxText} inbox`;
+            }
+        } else {
+            const numberOfInboxText = capitalizeFirstLetter(numWords(inboxCount));
+            notificationTitle = (inboxCount === 1) ? `${numberOfInboxText} inbox task` : `${numberOfInboxText} inbox tasks`;
+            body = 'Please organize the inbox';
+        }
+
+        // Create and schedule the notification
+        const notification = new Notification();
+        notification.title = notificationTitle;
+        notification.body = body;
+        notification.sound = 'event';
+        notification.openURL = REMINDER_URL;
+        notification.schedule();
+        
+        console.log(`Notification scheduled with title: "${notificationTitle}" and body: "${body}"`);
+    } catch (error) {
+        console.error('Error scheduling notification:', error);
+    }
 }
 
-// Fetch today's urgent tasks and trigger notification
-const { todayTasks, n } = await getTodayTasks();
-log(`Today's urgent tasks:\n${todayTasks}`);
-await remindersNotify(todayTasks, n);
+/**
+ * Fetches today's urgent tasks
+ * @returns {Object} - An object containing today's urgent tasks and their count
+ */
+async function getTodayUrgentTasks(allIncomplete) {
+    try {
+        const currentDate = new Date();
 
-// Log completion and mark script as complete
-log('Completed');
-Script.complete();
+        // Sort reminders by priority (lower priority number means higher priority)
+        allIncomplete.sort((a, b) => (a.priority || 1000) - (b.priority || 1000));
+
+        // Filter reminders that are due today or overdue with non-zero priority
+        const todayUrgentReminders = allIncomplete
+            .filter(reminder => reminder.dueDate && reminder.dueDate <= currentDate && reminder.priority !== 0)
+            .map(reminder => `\u2023 ${reminder.title}`);
+
+        return {
+            todayUrgentTasks: todayUrgentReminders.join('\n'),
+            n: todayUrgentReminders.length,
+        };
+    } catch (error) {
+        console.error('Error fetching today\'s urgent tasks:', error);
+        return { todayUrgentTasks: '', n: 0 };
+    }
+}
+
+/**
+ * Fetches the count of tasks in the inbox
+ * @returns {number} - Count of tasks in the inbox
+ */
+async function getInboxCount(allIncomplete) {
+    try {
+        const inboxCount = allIncomplete.filter(reminder => !reminder.dueDate && reminder.calendar.title === 'Напоминания').length;
+        return inboxCount;
+    } catch (error) {
+        console.error('Error fetching inbox count:', error);
+        return 0;
+    }
+}
+
+// Main function to fetch tasks and trigger the notification
+(async () => {
+    try {
+        const allIncomplete = await Reminder.allIncomplete();
+
+        const { todayUrgentTasks, n } = await getTodayUrgentTasks(allIncomplete);
+        console.log(`Today's urgent tasks:\n${todayUrgentTasks || 'None'}`);
+
+        const inboxCount = await getInboxCount(allIncomplete);
+        console.log(`Inbox count: ${inboxCount}`);
+
+        await remindersNotify(todayUrgentTasks, n, inboxCount);
+
+        console.log('Script execution completed.');
+    } catch (error) {
+        console.error('An error occurred during script execution:', error);
+    } finally {
+        Script.complete();
+    }
+})();
